@@ -88,7 +88,7 @@ class InsertWorker (DatabaseWorker):
                 break
             try:
                 cursor = self.db.cursor()
-                cursor.execute('insert into test (v1, v2) values (%d, %d)' % (id, 8));
+                cursor.execute('insert into test (v1, v2) values (%d, %d)' % (id, random.randint(1, 10000000)));
                 cursor.close()
             except:
                 pass
@@ -99,13 +99,20 @@ def cleanup():
     db = MySQLdb.connect(host='localhost', db='test', user='msandbox', passwd='msandbox', unix_socket='/tmp/mysql_sandbox5531.sock')
     db.autocommit(True)
     cursor = db.cursor()
-    cursor.execute('truncate table test')
+    cursor.execute('drop table if exists test')
     cursor.close()
     db.close()
 
 def prepare(size=0):
     if not size > 0:
         return
+
+    db = MySQLdb.connect(host='localhost', db='test', user='msandbox', passwd='msandbox', unix_socket='/tmp/mysql_sandbox5531.sock')
+    db.autocommit(True)
+    cursor = db.cursor()
+    cursor.execute('create table `test` (`id` int(11) not null auto_increment, `v1` int(11) not null, `v2` int(11) not null default 1, `v3` int(11) not null default 2, primary key (`id`), unique key `v1` (`v1`), key `v2` (`v2`) ) engine=innodb')
+    cursor.close()
+    db.close()
 
     q = multiprocessing.JoinableQueue(16)
     w = InsertWorker(q)
