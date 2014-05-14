@@ -58,15 +58,17 @@ class DeleteWorker (DatabaseWorker):
                 cursor = self.db.cursor()
                 cursor.execute('delete from test where v1 = %d' % (delete_id))
                 cursor.close()
+            except:
+                pass
 
-                if delay_queue.qsize() > 100:
+
+            if delay_queue.qsize() > 100:
+                while not delay_queue.empty():
                     insert_id = delay_queue.get()
                     q1.put(insert_id)
                     q2.put(insert_id)
                     q2.join()
                     q1.join()
-            except:
-                pass
 
             self.queue.task_done()
 
