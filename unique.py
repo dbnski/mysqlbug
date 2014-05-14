@@ -30,10 +30,10 @@ class DatabaseWorker (multiprocessing.Process):
 class DeleteWorker (DatabaseWorker):
 
     def task(self):
-        delay_queue = Queue.Queue(5)
+        delay_queue = Queue.Queue()
 
-        q1 = multiprocessing.JoinableQueue()
-        q2 = multiprocessing.JoinableQueue()
+        q1 = multiprocessing.JoinableQueue(16)
+        q2 = multiprocessing.JoinableQueue(16)
 
         w1 = InsertWorker(q1)
         w1.start()
@@ -42,21 +42,32 @@ class DeleteWorker (DatabaseWorker):
         w2.start()
         
         while True:
-            row_id = self.queue.get()
-            if row_id == 0:
-              self.queue.task_done()
-              break
+            delete_id = self.queue.get()
+            if delete_id == 0:
+                while not delay_queue.empty():
+                    insert_id = delay_queue.get()
+                    q1.put(insert_id)
+                    q2.put(insert_id)
+                    q2.join()
+                    q1.join()
+                self.queue.task_done()
+                break
+            delay_queue.put(delete_id)
+
             try:
                 cursor = self.db.cursor()
-                cursor.execute('delete from test where v1 = %d' % (row_id))
+                cursor.execute('delete from test where v1 = %d' % (delete_id))
                 cursor.close()
 
-                q1.put(row_id)
-                q2.put(row_id)
-                q2.join()
-                q1.join()
+                if delay_queue.qsize() > 100:
+                    insert_id = delay_queue.get()
+                    q1.put(insert_id)
+                    q2.put(insert_id)
+                    q2.join()
+                    q1.join()
             except:
                 pass
+
             self.queue.task_done()
 
         q1.put(0)
@@ -69,13 +80,13 @@ class InsertWorker (DatabaseWorker):
 
     def task(self):
         while True:
-            row_id = self.queue.get()
-            if row_id == 0:
-              self.queue.task_done()
-              break
+            id = self.queue.get()
+            if id == 0:
+                self.queue.task_done()
+                break
             try:
                 cursor = self.db.cursor()
-                cursor.execute('insert into test (v1, v2) values (%d, %d)' % (row_id, 8));
+                cursor.execute('insert into test (v1, v2) values (%d, %d)' % (id, 8));
                 cursor.close()
             except:
                 pass
