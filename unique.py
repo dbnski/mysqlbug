@@ -32,8 +32,8 @@ class DeleteWorker (DatabaseWorker):
     def task(self):
         delay_queue = Queue.Queue()
 
-        q1 = multiprocessing.JoinableQueue(16)
-        q2 = multiprocessing.JoinableQueue(16)
+        q1 = multiprocessing.JoinableQueue()
+        q2 = multiprocessing.JoinableQueue()
 
         w1 = InsertWorker(q1)
         w1.start()
