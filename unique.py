@@ -132,8 +132,8 @@ def prepare(size=0, threads=1):
         n = i % threads
         q[n].put(i)
 
-    for i in xrange(threads):
-        q.put(0)
+    for n in xrange(threads):
+        q[n].put(0)
 
     w.join()
 
