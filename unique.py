@@ -15,7 +15,7 @@ class DatabaseWorker (multiprocessing.Process):
         super(DatabaseWorker, self).__init__()
 
     def run(self):
-        self.db = MySQLdb.connect(host='localhost', db='test', user='msandbox', passwd='msandbox', unix_socket='/tmp/mysql_sandbox5531.sock')
+        self.db = MySQLdb.connect(host='localhost', db='test', user='root', passwd='', unix_socket='/var/lib/mysql/mysql.sock')
         self.db.autocommit(True)
         cursor = self.db.cursor()
         cursor.execute('set transaction isolation level read committed')
@@ -80,11 +80,16 @@ class DeleteWorker (DatabaseWorker):
 
 class InsertWorker (DatabaseWorker):
 
+    def __init__(self, queue, joinable=True):
+        self.joinable = joinable
+        super(InsertWorker, self).__init__(queue)
+
     def task(self):
         while True:
             id = self.queue.get()
             if id == 0:
-                self.queue.task_done()
+                if self.joinable:
+                    self.queue.task_done()
                 break
             try:
                 cursor = self.db.cursor()
@@ -92,37 +97,44 @@ class InsertWorker (DatabaseWorker):
                 cursor.close()
             except:
                 pass
-            self.queue.task_done()
+            if self.joinable:
+                self.queue.task_done()
 
 
 def cleanup():
-    db = MySQLdb.connect(host='localhost', db='test', user='msandbox', passwd='msandbox', unix_socket='/tmp/mysql_sandbox5531.sock')
+    db = MySQLdb.connect(host='localhost', db='test', user='root', passwd='', unix_socket='/var/lib/mysql/mysql.sock')
     db.autocommit(True)
     cursor = db.cursor()
     cursor.execute('drop table if exists test')
     cursor.close()
     db.close()
 
-def prepare(size=0):
+def prepare(size=0, threads=1):
     if not size > 0:
         return
 
-    db = MySQLdb.connect(host='localhost', db='test', user='msandbox', passwd='msandbox', unix_socket='/tmp/mysql_sandbox5531.sock')
+    db = MySQLdb.connect(host='localhost', db='test', user='root', passwd='', unix_socket='/var/lib/mysql/mysql.sock')
     db.autocommit(True)
     cursor = db.cursor()
     cursor.execute('create table `test` (`id` int(11) not null auto_increment, `v1` int(11) not null, `v2` int(11) not null default 1, `v3` int(11) not null default 2, primary key (`id`), unique key `v1` (`v1`), key `v2` (`v2`) ) engine=innodb')
     cursor.close()
     db.close()
 
-    q = multiprocessing.JoinableQueue(16)
-    w = InsertWorker(q)
-    w.start()
+    q = [None] * threads
+    w = [None] * threads
+    
+    for n in xrange(threads):
+        q[n] = multiprocessing.Queue(16)
+        w[n] = InsertWorker(queue=q[n], joinable=False)
+        w[n].start()
 
     for i in xrange(1, size):
-        q.put(i)
-        q.join()
+        n = i % threads
+        q[n].put(i)
 
-    q.put(0)
+    for i in xrange(threads):
+        q.put(0)
+
     w.join()
 
 def run(size=0):
@@ -154,6 +166,8 @@ def main():
                       action='store_true', default=False, dest='run')
     parser.add_option('-s', '--size',
                       action='store', type='int', default=0, dest='size')
+    parser.add_option('-t', '--prepare-threads',
+                      action='store', type='int', default=1, dest='prepare_threads')
 
     (options, args) = parser.parse_args()
 
@@ -168,7 +182,7 @@ def main():
     if options.cleanup:
         cleanup()
     if options.prepare:
-        prepare(options.size)
+        prepare(size=options.size, threads=options.prepare_threads)
     if options.run:
         run(options.size)
 
